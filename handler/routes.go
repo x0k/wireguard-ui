@@ -8,7 +8,9 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,14 +19,18 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/gommon/log"
 	"github.com/rs/xid"
+	"github.com/skip2/go-qrcode"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
 	"github.com/ngoduykhanh/wireguard-ui/emailer"
 	"github.com/ngoduykhanh/wireguard-ui/model"
 	"github.com/ngoduykhanh/wireguard-ui/store"
+	"github.com/ngoduykhanh/wireguard-ui/telegram"
 	"github.com/ngoduykhanh/wireguard-ui/util"
 )
+
+var usernameRegexp = regexp.MustCompile("^\\w[\\w\\-.]*$")
 
 // Health check handler
 func Health() echo.HandlerFunc {
@@ -63,9 +69,14 @@ func Login(db store.IStore) echo.HandlerFunc {
 		password := data["password"].(string)
 		rememberMe := data["rememberMe"].(bool)
 
+		if !usernameRegexp.MatchString(username) {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid username"})
+		}
+
 		dbuser, err := db.GetUserByName(username)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "Cannot query user from DB"})
+			log.Infof("Cannot query user %s from DB", username)
+			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "Invalid credentials"})
 		}
 
 		userCorrect := subtle.ConstantTimeCompare([]byte(username), []byte(dbuser.Username)) == 1
@@ -82,32 +93,41 @@ func Login(db store.IStore) echo.HandlerFunc {
 		}
 
 		if userCorrect && passwordCorrect {
-			// TODO: refresh the token
 			ageMax := 0
-			expiration := time.Now().Add(24 * time.Hour)
 			if rememberMe {
-				ageMax = 86400
-				expiration.Add(144 * time.Hour)
+				ageMax = 86400 * 7
 			}
+
+			cookiePath := util.GetCookiePath()
+
 			sess, _ := session.Get("session", c)
 			sess.Options = &sessions.Options{
-				Path:     util.BasePath,
+				Path:     cookiePath,
 				MaxAge:   ageMax,
 				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
 			}
 
 			// set session_token
 			tokenUID := xid.New().String()
+			now := time.Now().UTC().Unix()
 			sess.Values["username"] = dbuser.Username
+			sess.Values["user_hash"] = util.GetDBUserCRC32(dbuser)
 			sess.Values["admin"] = dbuser.Admin
 			sess.Values["session_token"] = tokenUID
+			sess.Values["max_age"] = ageMax
+			sess.Values["created_at"] = now
+			sess.Values["updated_at"] = now
 			sess.Save(c.Request(), c.Response())
 
 			// set session_token in cookie
 			cookie := new(http.Cookie)
 			cookie.Name = "session_token"
+			cookie.Path = cookiePath
 			cookie.Value = tokenUID
-			cookie.Expires = expiration
+			cookie.MaxAge = ageMax
+			cookie.HttpOnly = true
+			cookie.SameSite = http.SameSiteLaxMode
 			c.SetCookie(cookie)
 
 			return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Logged in successfully"})
@@ -120,7 +140,6 @@ func Login(db store.IStore) echo.HandlerFunc {
 // GetUsers handler return a JSON list of all users
 func GetUsers(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		usersList, err := db.GetUsers()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{
@@ -135,8 +154,11 @@ func GetUsers(db store.IStore) echo.HandlerFunc {
 // GetUser handler returns a JSON object of single user
 func GetUser(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		username := c.Param("username")
+
+		if !usernameRegexp.MatchString(username) {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid username"})
+		}
 
 		if !isAdmin(c) && (username != currentUser(c)) {
 			return c.JSON(http.StatusForbidden, jsonHTTPResponse{false, "Manager cannot access other user data"})
@@ -160,7 +182,7 @@ func Logout() echo.HandlerFunc {
 }
 
 // LoadProfile to load user information
-func LoadProfile(db store.IStore) echo.HandlerFunc {
+func LoadProfile() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		return c.Render(http.StatusOK, "profile.html", map[string]interface{}{
 			"baseData": model.BaseData{Active: "profile", CurrentUser: currentUser(c), Admin: isAdmin(c)},
@@ -169,7 +191,7 @@ func LoadProfile(db store.IStore) echo.HandlerFunc {
 }
 
 // UsersSettings handler
-func UsersSettings(db store.IStore) echo.HandlerFunc {
+func UsersSettings() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		return c.Render(http.StatusOK, "users_settings.html", map[string]interface{}{
 			"baseData": model.BaseData{Active: "users-settings", CurrentUser: currentUser(c), Admin: isAdmin(c)},
@@ -200,12 +222,16 @@ func UpdateUser(db store.IStore) echo.HandlerFunc {
 			admin = false
 		}
 
+		if !usernameRegexp.MatchString(previousUsername) {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid username"})
+		}
+
 		user, err := db.GetUserByName(previousUsername)
 		if err != nil {
 			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, err.Error()})
 		}
 
-		if username == "" {
+		if username == "" || !usernameRegexp.MatchString(username) {
 			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid username"})
 		} else {
 			user.Username = username
@@ -239,7 +265,7 @@ func UpdateUser(db store.IStore) echo.HandlerFunc {
 		log.Infof("Updated user information successfully")
 
 		if previousUsername == currentUser(c) {
-			setUser(c, user.Username, user.Admin)
+			setUser(c, user.Username, user.Admin, util.GetDBUserCRC32(user))
 		}
 
 		return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Updated user information successfully"})
@@ -261,7 +287,7 @@ func CreateUser(db store.IStore) echo.HandlerFunc {
 		password := data["password"].(string)
 		admin := data["admin"].(bool)
 
-		if username == "" {
+		if username == "" || !usernameRegexp.MatchString(username) {
 			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid username"})
 		} else {
 			user.Username = username
@@ -303,6 +329,10 @@ func RemoveUser(db store.IStore) echo.HandlerFunc {
 
 		username := data["username"].(string)
 
+		if !usernameRegexp.MatchString(username) {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid username"})
+		}
+
 		if username == currentUser(c) {
 			return c.JSON(http.StatusForbidden, jsonHTTPResponse{false, "User cannot delete itself"})
 		}
@@ -322,7 +352,6 @@ func RemoveUser(db store.IStore) echo.HandlerFunc {
 // WireGuardClients handler
 func WireGuardClients(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		clientDataList, err := db.GetClients(true)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{
@@ -340,12 +369,15 @@ func WireGuardClients(db store.IStore) echo.HandlerFunc {
 // GetClients handler return a JSON list of Wireguard client data
 func GetClients(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		clientDataList, err := db.GetClients(true)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{
 				false, fmt.Sprintf("Cannot get client list: %v", err),
 			})
+		}
+
+		for i, clientData := range clientDataList {
+			clientDataList[i] = util.FillClientSubnetRange(clientData)
 		}
 
 		return c.JSON(http.StatusOK, clientDataList)
@@ -355,12 +387,16 @@ func GetClients(db store.IStore) echo.HandlerFunc {
 // GetClient handler returns a JSON object of Wireguard client data
 func GetClient(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		clientID := c.Param("id")
+
+		if _, err := xid.FromString(clientID); err != nil {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid client ID"})
+		}
+
 		qrCodeSettings := model.QRCodeSettings{
-			Enabled:       true,
-			IncludeDNS:    true,
-			IncludeMTU:    true,
+			Enabled:    true,
+			IncludeDNS: true,
+			IncludeMTU: true,
 		}
 
 		clientData, err := db.GetClientByID(clientID, qrCodeSettings)
@@ -368,16 +404,23 @@ func GetClient(db store.IStore) echo.HandlerFunc {
 			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, "Client not found"})
 		}
 
-		return c.JSON(http.StatusOK, clientData)
+		return c.JSON(http.StatusOK, util.FillClientSubnetRange(clientData))
 	}
 }
 
 // NewClient handler
 func NewClient(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		var client model.Client
 		c.Bind(&client)
+
+		// Validate Telegram userid if provided
+		if client.TgUserid != "" {
+			idNum, err := strconv.ParseInt(client.TgUserid, 10, 64)
+			if err != nil || idNum == 0 {
+				return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Telegram userid must be a non-zero number"})
+			}
+		}
 
 		// read server information
 		server, err := db.GetServer()
@@ -436,7 +479,6 @@ func NewClient(db store.IStore) echo.HandlerFunc {
 					return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "Duplicate Public Key"})
 				}
 			}
-
 		}
 
 		if client.PresharedKey == "" {
@@ -485,10 +527,14 @@ func EmailClient(db store.IStore, mailer emailer.Emailer, emailSubject, emailCon
 		c.Bind(&payload)
 		// TODO validate email
 
+		if _, err := xid.FromString(payload.ID); err != nil {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid client ID"})
+		}
+
 		qrCodeSettings := model.QRCodeSettings{
-			Enabled:       true,
-			IncludeDNS:    true,
-			IncludeMTU:    true,
+			Enabled:    true,
+			IncludeDNS: true,
+			IncludeMTU: true,
 		}
 		clientData, err := db.GetClientByID(payload.ID, qrCodeSettings)
 		if err != nil {
@@ -501,14 +547,14 @@ func EmailClient(db store.IStore, mailer emailer.Emailer, emailSubject, emailCon
 		globalSettings, _ := db.GetGlobalSettings()
 		config := util.BuildClientConfig(*clientData.Client, server, globalSettings)
 
-		cfgAtt := emailer.Attachment{"wg0.conf", []byte(config)}
+		cfgAtt := emailer.Attachment{Name: "wg0.conf", Data: []byte(config)}
 		var attachments []emailer.Attachment
 		if clientData.Client.PrivateKey != "" {
 			qrdata, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(clientData.QRCode, "data:image/png;base64,"))
 			if err != nil {
 				return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "decoding: " + err.Error()})
 			}
-			qrAtt := emailer.Attachment{"wg.png", qrdata}
+			qrAtt := emailer.Attachment{Name: "wg.png", Data: qrdata}
 			attachments = []emailer.Attachment{cfgAtt, qrAtt}
 		} else {
 			attachments = []emailer.Attachment{cfgAtt}
@@ -529,17 +575,73 @@ func EmailClient(db store.IStore, mailer emailer.Emailer, emailSubject, emailCon
 	}
 }
 
+// SendTelegramClient handler to send the configuration via Telegram
+func SendTelegramClient(db store.IStore) echo.HandlerFunc {
+	type clientIdUseridPayload struct {
+		ID     string `json:"id"`
+		Userid string `json:"userid"`
+	}
+	return func(c echo.Context) error {
+		var payload clientIdUseridPayload
+		c.Bind(&payload)
+
+		clientData, err := db.GetClientByID(payload.ID, model.QRCodeSettings{Enabled: false})
+		if err != nil {
+			log.Errorf("Cannot generate client id %s config file for downloading: %v", payload.ID, err)
+			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, "Client not found"})
+		}
+
+		// build config
+		server, _ := db.GetServer()
+		globalSettings, _ := db.GetGlobalSettings()
+		config := util.BuildClientConfig(*clientData.Client, server, globalSettings)
+		configData := []byte(config)
+		var qrData []byte
+
+		if clientData.Client.PrivateKey != "" {
+			qrData, err = qrcode.Encode(config, qrcode.Medium, 512)
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "qr gen: " + err.Error()})
+			}
+		}
+
+		userid, err := strconv.ParseInt(clientData.Client.TgUserid, 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, "userid: " + err.Error()})
+		}
+
+		err = telegram.SendConfig(userid, clientData.Client.Name, configData, qrData, false)
+
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{false, err.Error()})
+		}
+
+		return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Telegram message sent successfully"})
+	}
+}
+
 // UpdateClient handler to update client information
 func UpdateClient(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		var _client model.Client
 		c.Bind(&_client)
+
+		if _, err := xid.FromString(_client.ID); err != nil {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid client ID"})
+		}
 
 		// validate client existence
 		clientData, err := db.GetClientByID(_client.ID, model.QRCodeSettings{Enabled: false})
 		if err != nil {
 			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, "Client not found"})
+		}
+
+		// Validate Telegram userid if provided
+		if _client.TgUserid != "" {
+			idNum, err := strconv.ParseInt(_client.TgUserid, 10, 64)
+			if err != nil || idNum == 0 {
+				return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Telegram userid must be a non-zero number"})
+			}
 		}
 
 		server, err := db.GetServer()
@@ -594,7 +696,6 @@ func UpdateClient(db store.IStore) echo.HandlerFunc {
 			if client.PrivateKey != "" {
 				client.PrivateKey = ""
 			}
-
 		}
 
 		// update Wireguard Client PresharedKey
@@ -609,11 +710,13 @@ func UpdateClient(db store.IStore) echo.HandlerFunc {
 		// map new data
 		client.Name = _client.Name
 		client.Email = _client.Email
+		client.TgUserid = _client.TgUserid
 		client.Enabled = _client.Enabled
 		client.UseServerDNS = _client.UseServerDNS
 		client.AllocatedIPs = _client.AllocatedIPs
 		client.AllowedIPs = _client.AllowedIPs
 		client.ExtraAllowedIPs = _client.ExtraAllowedIPs
+		client.Endpoint = _client.Endpoint
 		client.PublicKey = _client.PublicKey
 		client.PresharedKey = _client.PresharedKey
 		client.UpdatedAt = time.Now().UTC()
@@ -631,7 +734,6 @@ func UpdateClient(db store.IStore) echo.HandlerFunc {
 // SetClientStatus handler to enable / disable a client
 func SetClientStatus(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		data := make(map[string]interface{})
 		err := json.NewDecoder(c.Request().Body).Decode(&data)
 
@@ -641,6 +743,10 @@ func SetClientStatus(db store.IStore) echo.HandlerFunc {
 
 		clientID := data["id"].(string)
 		status := data["status"].(bool)
+
+		if _, err := xid.FromString(clientID); err != nil {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid client ID"})
+		}
 
 		clientData, err := db.GetClientByID(clientID, model.QRCodeSettings{Enabled: false})
 		if err != nil {
@@ -667,6 +773,10 @@ func DownloadClient(db store.IStore) echo.HandlerFunc {
 			return c.JSON(http.StatusNotFound, jsonHTTPResponse{false, "Missing clientid parameter"})
 		}
 
+		if _, err := xid.FromString(clientID); err != nil {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid client ID"})
+		}
+
 		clientData, err := db.GetClientByID(clientID, model.QRCodeSettings{Enabled: false})
 		if err != nil {
 			log.Errorf("Cannot generate client id %s config file for downloading: %v", clientID, err)
@@ -689,16 +799,19 @@ func DownloadClient(db store.IStore) echo.HandlerFunc {
 
 		// set response header for downloading
 		c.Response().Header().Set(echo.HeaderContentDisposition, fmt.Sprintf("attachment; filename=%s.conf", clientData.Client.Name))
-		return c.Stream(http.StatusOK, "text/plain", reader)
+		return c.Stream(http.StatusOK, "text/conf", reader)
 	}
 }
 
 // RemoveClient handler
 func RemoveClient(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		client := new(model.Client)
 		c.Bind(client)
+
+		if _, err := xid.FromString(client.ID); err != nil {
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Please provide a valid client ID"})
+		}
 
 		// delete client from database
 
@@ -715,7 +828,6 @@ func RemoveClient(db store.IStore) echo.HandlerFunc {
 // WireGuardServer handler
 func WireGuardServer(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		server, err := db.GetServer()
 		if err != nil {
 			log.Error("Cannot get server config: ", err)
@@ -732,7 +844,6 @@ func WireGuardServer(db store.IStore) echo.HandlerFunc {
 // WireGuardServerInterfaces handler
 func WireGuardServerInterfaces(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		var serverInterface model.ServerInterface
 		c.Bind(&serverInterface)
 
@@ -758,7 +869,6 @@ func WireGuardServerInterfaces(db store.IStore) echo.HandlerFunc {
 // WireGuardServerKeyPair handler to generate private and public keys
 func WireGuardServerKeyPair(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		// gen Wireguard key pair
 		key, err := wgtypes.GeneratePrivateKey()
 		if err != nil {
@@ -783,7 +893,6 @@ func WireGuardServerKeyPair(db store.IStore) echo.HandlerFunc {
 // GlobalSettings handler
 func GlobalSettings(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		globalSettings, err := db.GetGlobalSettings()
 		if err != nil {
 			log.Error("Cannot get global settings: ", err)
@@ -816,7 +925,6 @@ func Status(db store.IStore) echo.HandlerFunc {
 		Peers []PeerVM
 	}
 	return func(c echo.Context) error {
-
 		wgClient, err := wgctrl.New()
 		if err != nil {
 			return c.Render(http.StatusInternalServerError, "status.html", map[string]interface{}{
@@ -897,7 +1005,6 @@ func Status(db store.IStore) echo.HandlerFunc {
 // GlobalSettingSubmit handler to update the global settings
 func GlobalSettingSubmit(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		var globalSettings model.GlobalSetting
 		c.Bind(&globalSettings)
 
@@ -923,7 +1030,6 @@ func GlobalSettingSubmit(db store.IStore) echo.HandlerFunc {
 // MachineIPAddresses handler to get local interface ip addresses
 func MachineIPAddresses() echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		// get private ip addresses
 		interfaceList, err := util.GetInterfaceIPs()
 		if err != nil {
@@ -944,10 +1050,16 @@ func MachineIPAddresses() echo.HandlerFunc {
 	}
 }
 
+// GetOrderedSubnetRanges handler to get the ordered list of subnet ranges
+func GetOrderedSubnetRanges() echo.HandlerFunc {
+	return func(c echo.Context) error {
+		return c.JSON(http.StatusOK, util.SubnetRangesOrder)
+	}
+}
+
 // SuggestIPAllocation handler to get the list of ip address for client
 func SuggestIPAllocation(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		server, err := db.GetServer()
 		if err != nil {
 			log.Error("Cannot fetch server config from database: ", err)
@@ -965,20 +1077,46 @@ func SuggestIPAllocation(db store.IStore) echo.HandlerFunc {
 				false, "Cannot suggest ip allocation: failed to get list of allocated ip addresses",
 			})
 		}
-		for _, cidr := range server.Interface.Addresses {
-			ip, err := util.GetAvailableIP(cidr, allocatedIPs)
+
+		sr := c.QueryParam("sr")
+		searchCIDRList := make([]string, 0)
+		found := false
+
+		// Use subnet range or default to interface addresses
+		if util.SubnetRanges[sr] != nil {
+			for _, cidr := range util.SubnetRanges[sr] {
+				searchCIDRList = append(searchCIDRList, cidr.String())
+			}
+		} else {
+			searchCIDRList = append(searchCIDRList, server.Interface.Addresses...)
+		}
+
+		// Save only unique IPs
+		ipSet := make(map[string]struct{})
+
+		for _, cidr := range searchCIDRList {
+			ip, err := util.GetAvailableIP(cidr, allocatedIPs, server.Interface.Addresses)
 			if err != nil {
 				log.Error("Failed to get available ip from a CIDR: ", err)
-				return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{
-					false,
-					fmt.Sprintf("Cannot suggest ip allocation: failed to get available ip from network %s", cidr),
-				})
+				continue
 			}
+			found = true
 			if strings.Contains(ip, ":") {
-				suggestedIPs = append(suggestedIPs, fmt.Sprintf("%s/128", ip))
+				ipSet[fmt.Sprintf("%s/128", ip)] = struct{}{}
 			} else {
-				suggestedIPs = append(suggestedIPs, fmt.Sprintf("%s/32", ip))
+				ipSet[fmt.Sprintf("%s/32", ip)] = struct{}{}
 			}
+		}
+
+		if !found {
+			return c.JSON(http.StatusInternalServerError, jsonHTTPResponse{
+				false,
+				"Cannot suggest ip allocation: failed to get available ip. Try a different subnet or deallocate some ips.",
+			})
+		}
+
+		for ip := range ipSet {
+			suggestedIPs = append(suggestedIPs, ip)
 		}
 
 		return c.JSON(http.StatusOK, suggestedIPs)
@@ -988,7 +1126,6 @@ func SuggestIPAllocation(db store.IStore) echo.HandlerFunc {
 // ApplyServerConfig handler to write config file and restart Wireguard server
 func ApplyServerConfig(db store.IStore, tmplDir fs.FS) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		server, err := db.GetServer()
 		if err != nil {
 			log.Error("Cannot get server config: ", err)
@@ -1033,7 +1170,6 @@ func ApplyServerConfig(db store.IStore, tmplDir fs.FS) echo.HandlerFunc {
 		return c.JSON(http.StatusOK, jsonHTTPResponse{true, "Applied server config successfully"})
 	}
 }
-
 
 // GetHashesChanges handler returns if database hashes have changed
 func GetHashesChanges(db store.IStore) echo.HandlerFunc {

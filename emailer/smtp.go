@@ -3,9 +3,10 @@ package emailer
 import (
 	"crypto/tls"
 	"fmt"
-	mail "github.com/xhit/go-simple-mail/v2"
 	"strings"
 	"time"
+
+	mail "github.com/xhit/go-simple-mail/v2"
 )
 
 type SmtpMail struct {
@@ -13,6 +14,7 @@ type SmtpMail struct {
 	port       int
 	username   string
 	password   string
+	smtpHelo   string
 	authType   mail.AuthType
 	encryption mail.Encryption
 	noTLSCheck bool
@@ -46,8 +48,8 @@ func encryptionType(encryptionType string) mail.Encryption {
 	}
 }
 
-func NewSmtpMail(hostname string, port int, username string, password string, noTLSCheck bool, auth string, fromName, from string, encryption string) *SmtpMail {
-	ans := SmtpMail{hostname: hostname, port: port, username: username, password: password, noTLSCheck: noTLSCheck, fromName: fromName, from: from, authType: authType(auth), encryption: encryptionType(encryption)}
+func NewSmtpMail(hostname string, port int, username string, password string, SmtpHelo string, noTLSCheck bool, auth string, fromName, from string, encryption string) *SmtpMail {
+	ans := SmtpMail{hostname: hostname, port: port, username: username, password: password, smtpHelo: SmtpHelo, noTLSCheck: noTLSCheck, fromName: fromName, from: from, authType: authType(auth), encryption: encryptionType(encryption)}
 	return &ans
 }
 
@@ -66,6 +68,7 @@ func (o *SmtpMail) Send(toName string, to string, subject string, content string
 	server.Authentication = o.authType
 	server.Username = o.username
 	server.Password = o.password
+	server.Helo = o.smtpHelo
 	server.Encryption = o.encryption
 	server.KeepAlive = false
 	server.ConnectTimeout = 10 * time.Second

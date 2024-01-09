@@ -3,10 +3,10 @@ package jsondb
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path"
 
 	"github.com/ngoduykhanh/wireguard-ui/model"
+	"github.com/ngoduykhanh/wireguard-ui/util"
 )
 
 func (o *JsonDB) GetWakeOnLanHosts() ([]model.WakeOnLanHost, error) {
@@ -23,7 +23,7 @@ func (o *JsonDB) GetWakeOnLanHosts() ([]model.WakeOnLanHost, error) {
 		host := model.WakeOnLanHost{}
 
 		// get client info
-		if err := json.Unmarshal([]byte(f), &host); err != nil {
+		if err := json.Unmarshal(f, &host); err != nil {
 			return hosts, fmt.Errorf("cannot decode client json structure: %v", err)
 		}
 
@@ -70,9 +70,12 @@ func (o *JsonDB) SaveWakeOnLanHost(host model.WakeOnLanHost) error {
 
 	wakeOnLanHostPath := path.Join(path.Join(o.dbPath, model.WakeOnLanHostCollectionName), resourceName+".json")
 	output := o.conn.Write(model.WakeOnLanHostCollectionName, resourceName, host)
-	os.Chmod(wakeOnLanHostPath, 0600)
-	return output
+	err = util.ManagePerms(wakeOnLanHostPath)
+	if err != nil {
+		return err
+	}
 
+	return output
 }
 
 func (o *JsonDB) DeleteWakeOnHost(host model.WakeOnLanHost) error {

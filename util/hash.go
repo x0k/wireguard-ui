@@ -2,7 +2,9 @@ package util
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -20,7 +22,7 @@ func VerifyHash(base64Hash string, plaintext string) (bool, error) {
 		return false, fmt.Errorf("cannot decode base64 hash: %w", err)
 	}
 	err = bcrypt.CompareHashAndPassword(hash, []byte(plaintext))
-	if err == bcrypt.ErrMismatchedHashAndPassword {
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 		return false, nil
 	}
 	if err != nil {
