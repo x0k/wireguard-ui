@@ -303,7 +303,7 @@ func initServerConfig(db store.IStore, tmplDir fs.FS) {
 		log.Fatalf("Cannot get global settings: %v", err)
 	}
 
-	if _, err := os.Stat(settings.ConfigFilePath); err == nil && flagForceWgConf == false {
+	if _, err := os.Stat(settings.ConfigFilePath); err == nil && !flagForceWgConf {
 		// file exists, don't overwrite it implicitly
 		return
 	}
