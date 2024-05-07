@@ -720,6 +720,7 @@ func UpdateClient(db store.IStore) echo.HandlerFunc {
 		client.PublicKey = _client.PublicKey
 		client.PresharedKey = _client.PresharedKey
 		client.UpdatedAt = time.Now().UTC()
+		client.AdditionalNotes = strings.ReplaceAll(strings.Trim(_client.AdditionalNotes, "\r\n"), "\r\n", "\n")
 
 		// write to the database
 		if err := db.SaveClient(client); err != nil {
@@ -978,9 +979,12 @@ func Status(db store.IStore) echo.HandlerFunc {
 						LastHandshakeTime: devices[i].Peers[j].LastHandshakeTime,
 						LastHandshakeRel:  time.Since(devices[i].Peers[j].LastHandshakeTime),
 						AllocatedIP:       allocatedIPs,
-						Endpoint:          devices[i].Peers[j].Endpoint.String(),
 					}
 					pVm.Connected = pVm.LastHandshakeRel.Minutes() < 3.
+
+					if isAdmin(c) {
+						pVm.Endpoint = devices[i].Peers[j].Endpoint.String()
+					}
 
 					if _client, ok := m[pVm.PublicKey]; ok {
 						pVm.Name = _client.Name

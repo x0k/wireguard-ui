@@ -38,13 +38,18 @@ function renderClientList(data) {
             subnetRangesString = obj.Client.subnet_ranges.join(',')
         }
 
+        let additionalNotesHtml = "";
+        if (obj.Client.additional_notes && obj.Client.additional_notes.length > 0) {
+            additionalNotesHtml = `<span class="info-box-text" style="display: none"><i class="fas fa-additional_notes"></i>${obj.Client.additional_notes.toUpperCase()}</span>`
+        }
+
         // render client html content
         let html = `<div class="col-sm-6 col-md-6 col-lg-4" id="client_${obj.Client.id}">
                         <div class="info-box">
                             <div class="overlay" id="paused_${obj.Client.id}"` + clientStatusHtml
                                 + `<i class="paused-client fas fa-3x fa-play" onclick="resumeClient('${obj.Client.id}')"></i>
                             </div>
-                            <div class="info-box-content">
+                            <div class="info-box-content" style="overflow: hidden">
                                 <div class="btn-group">
                                     <a href="download?clientid=${obj.Client.id}" class="btn btn-outline-primary btn-sm">Download</a>
                                 </div>
@@ -81,6 +86,7 @@ function renderClientList(data) {
                                 <span class="info-box-text" style="display: none"><i class="fas fa-key"></i> ${obj.Client.public_key}</span>
                                 <span class="info-box-text" style="display: none"><i class="fas fa-subnetrange"></i>${subnetRangesString}</span>
                                 ${telegramHtml}
+                                ${additionalNotesHtml}
                                 <span class="info-box-text"><i class="fas fa-envelope"></i> ${obj.Client.email}</span>
                                 <span class="info-box-text"><i class="fas fa-clock"></i>
                                     ${prettyDateTime(obj.Client.created_at)}</span>
@@ -88,6 +94,8 @@ function renderClientList(data) {
                                     ${prettyDateTime(obj.Client.updated_at)}</span>
                                 <span class="info-box-text"><i class="fas fa-server" style="${obj.Client.use_server_dns ? "opacity: 1.0" : "opacity: 0.5"}"></i>
                                     ${obj.Client.use_server_dns ? 'DNS enabled' : 'DNS disabled'}</span>
+                                <span class="info-box-text"><i class="fas fa-file"></i>
+                                    ${obj.Client.additional_notes}</span>
                                 <span class="info-box-text"><strong>IP Allocation</strong></span>`
                                 + allocatedIpsHtml
                                 + `<span class="info-box-text"><strong>Allowed IPs</strong></span>`
