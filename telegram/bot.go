@@ -134,16 +134,18 @@ func SendConfig(userid int64, clientName string, confData, qrData []byte, ignore
 		floodWait[userid] = time.Now().Unix()
 	}
 
-	qrAttachment := echotron.NewInputFileBytes("qr.png", qrData)
-	_, err := Bot.SendPhoto(qrAttachment, userid, &echotron.PhotoOptions{Caption: clientName})
-	if err != nil {
-		log.Error(err)
-		return fmt.Errorf("unable to send qr picture")
+	if len(qrData) > 0 {
+		qrAttachment := echotron.NewInputFileBytes("qr.png", qrData)
+		if _, err := Bot.SendPhoto(qrAttachment, userid, &echotron.PhotoOptions{
+			Caption: clientName,
+		}); err != nil {
+			log.Error(err)
+			return fmt.Errorf("unable to send qr picture")
+		}
 	}
 
 	confAttachment := echotron.NewInputFileBytes(clientName+".conf", confData)
-	_, err = Bot.SendDocument(confAttachment, userid, nil)
-	if err != nil {
+	if _, err := Bot.SendDocument(confAttachment, userid, nil); err != nil {
 		log.Error(err)
 		return fmt.Errorf("unable to send conf file")
 	}
