@@ -32,7 +32,7 @@ var (
 	gitRef     = "N/A"
 	buildTime  = fmt.Sprintf(time.Now().UTC().Format("01-02-2006 15:04:05"))
 	// configuration variables
-	flagForceWgConf              = false
+	flagWgForceConf              = false
 	flagDisableLogin             = false
 	flagBindAddress              = "0.0.0.0:5000"
 	flagSmtpHostname             = "127.0.0.1"
@@ -77,7 +77,7 @@ var embeddedAssets embed.FS
 
 func init() {
 	// command-line flags and env variables
-	flag.BoolVar(&flagForceWgConf, "force-wg-conf", util.LookupEnvOrBool("FORCE_WG_CONF", flagForceWgConf), "Forcing the wireguard configuration to be written at application startup.")
+	flag.BoolVar(&flagWgForceConf, "force-wg-conf", util.LookupEnvOrBool("WG_FORCE_CONF", flagWgForceConf), "Forcing the wireguard configuration to be written at application startup.")
 	flag.BoolVar(&flagDisableLogin, "disable-login", util.LookupEnvOrBool("DISABLE_LOGIN", flagDisableLogin), "Disable authentication on the app. This is potentially dangerous.")
 	flag.StringVar(&flagBindAddress, "bind-address", util.LookupEnvOrString("BIND_ADDRESS", flagBindAddress), "Address:Port to which the app will be bound.")
 	flag.StringVar(&flagSmtpHostname, "smtp-hostname", util.LookupEnvOrString("SMTP_HOSTNAME", flagSmtpHostname), "SMTP Hostname")
@@ -303,7 +303,7 @@ func initServerConfig(db store.IStore, tmplDir fs.FS) {
 		log.Fatalf("Cannot get global settings: %v", err)
 	}
 
-	if _, err := os.Stat(settings.ConfigFilePath); err == nil && !flagForceWgConf {
+	if _, err := os.Stat(settings.ConfigFilePath); err == nil && !flagWgForceConf {
 		// file exists, don't overwrite it implicitly
 		return
 	}
