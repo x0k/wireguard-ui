@@ -61,7 +61,13 @@ FROM alpine:3.20
 RUN addgroup -S wgui && \
     adduser -S -D -G wgui wgui
 
-RUN apk --no-cache add ca-certificates wireguard-tools jq iptables
+RUN apk --no-cache add build-base ca-certificates wireguard-tools jq iptables
+
+COPY amneziawg-tools/ /amnezia
+
+WORKDIR /amnezia/src
+
+RUN WITH_WGQUICK=yes WITH_SYSTEMDUNITS=no WITH_BASHCOMPLETION=no make install
 
 WORKDIR /app
 
