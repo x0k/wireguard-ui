@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:1.23.2-alpine3.20 AS builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} 1.24.5-alpine3.22 AS builder
 LABEL maintainer="Khanh Ngo <k@ndk.name>"
 
 ARG BUILDPLATFORM
@@ -56,7 +56,7 @@ RUN cp -r /build/custom/ assets/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-X 'main.appVersion=${APP_VERSION}' -X 'main.buildTime=${BUILD_TIME}' -X 'main.gitCommit=${GIT_COMMIT}'" -a -o wg-ui .
 
 # Release stage
-FROM alpine:3.20
+FROM alpine:3.22
 
 RUN addgroup -S wgui && \
     adduser -S -D -G wgui wgui
