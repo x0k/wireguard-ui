@@ -42,6 +42,10 @@ func BuildClientConfig(client model.Client, server model.Server, setting model.G
 	// Interface section
 	clientAddress := fmt.Sprintf("Address = %s\n", strings.Join(client.AllocatedIPs, ","))
 	clientPrivateKey := fmt.Sprintf("PrivateKey = %s\n", client.PrivateKey)
+	clientAmneziaWGProperties := ""
+	if server.Interface != nil {
+		clientAmneziaWGProperties = BuildAmneziaWGProperties(server.Interface.AmneziaWGProperties)
+	}
 	clientDNS := ""
 	if client.UseServerDNS {
 		clientDNS = fmt.Sprintf("DNS = %s\n", strings.Join(setting.DNSServers, ","))
@@ -82,6 +86,7 @@ func BuildClientConfig(client model.Client, server model.Server, setting model.G
 	strConfig := "[Interface]\n" +
 		clientAddress +
 		clientPrivateKey +
+		clientAmneziaWGProperties +
 		clientDNS +
 		clientMTU +
 		"\n[Peer]\n" +
@@ -92,6 +97,59 @@ func BuildClientConfig(client model.Client, server model.Server, setting model.G
 		peerPersistentKeepalive
 
 	return strConfig
+}
+
+func BuildAmneziaWGProperties(props model.AmneziaWGProperties) string {
+	var b strings.Builder
+
+	writeInt := func(name string, value int) {
+		if value > 0 {
+			fmt.Fprintf(&b, "%s = %d\n", name, value)
+		}
+	}
+	writeString := func(name string, value string) {
+		if value != "" {
+			fmt.Fprintf(&b, "%s = %s\n", name, value)
+		}
+	}
+
+	writeInt("Jc", props.Jc)
+	writeInt("Jmin", props.Jmin)
+	writeInt("Jmax", props.Jmax)
+	writeInt("S1", props.S1)
+	writeInt("S2", props.S2)
+	writeInt("S3", props.S3)
+	writeInt("S4", props.S4)
+	writeString("H1", props.H1)
+	writeString("H2", props.H2)
+	writeString("H3", props.H3)
+	writeString("H4", props.H4)
+	writeString("I1", props.I1)
+	writeString("I2", props.I2)
+	writeString("I3", props.I3)
+	writeString("I4", props.I4)
+	writeString("I5", props.I5)
+
+	return b.String()
+}
+
+func ValidateAmneziaWGProperties(props model.AmneziaWGProperties) error {
+	if props.Jc < 0 || props.Jmin < 0 || props.Jmax < 0 || props.S1 < 0 || props.S2 < 0 || props.S3 < 0 || props.S4 < 0 {
+		return errors.New("AmneziaWG numeric properties cannot be negative")
+	}
+	if props.Jc > 128 {
+		return errors.New("Jc must be in range 1..128")
+	}
+	if props.Jmin > 0 || props.Jmax > 0 {
+		if props.Jmin >= props.Jmax {
+			return errors.New("Jmin must be less than Jmax")
+		}
+		if props.Jmax >= 1280 {
+			return errors.New("Jmax must be less than 1280")
+		}
+	}
+
+	return nil
 }
 
 // ClientDefaultsFromEnv to read the default values for creating a new client from the environment or use sane defaults
@@ -570,7 +628,9 @@ func WriteWireGuardServerConfig(tmplDir fs.FS, serverConfig model.Server, client
 	}
 
 	// parse the template
-	t, err := template.New("wg_config").Parse(tmplWireguardConf)
+	t, err := template.New("wg_config").Funcs(template.FuncMap{
+		"BuildAmneziaWGProperties": BuildAmneziaWGProperties,
+	}).Parse(tmplWireguardConf)
 	if err != nil {
 		return err
 	}

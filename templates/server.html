@@ -53,6 +53,91 @@ Wireguard Server Settings
                                 <input type="text" class="form-control" id="post_down" name="post_down"
                                        placeholder="Post Down Script" value="{{ .serverInterface.PostDown }}">
                             </div>
+                            <details>
+                                <summary><strong>AmneziaWG properties</strong></summary>
+                                <p class="text-muted mt-2 mb-3">
+                                    These values are added to generated server and client configs. On Keenetic clients,
+                                    <code>Jc</code>, <code>Jmin</code>, and <code>Jmax</code> may be changed manually;
+                                    all other AmneziaWG values must match the generated client config.
+                                </p>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="jc">Jc</label>
+                                        <input type="text" class="form-control" id="jc" name="jc" placeholder="1..128"
+                                               value="{{if .serverInterface.Jc}}{{ .serverInterface.Jc }}{{end}}">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="jmin">Jmin</label>
+                                        <input type="text" class="form-control" id="jmin" name="jmin" placeholder="Jmin < Jmax"
+                                               value="{{if .serverInterface.Jmin}}{{ .serverInterface.Jmin }}{{end}}">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="jmax">Jmax</label>
+                                        <input type="text" class="form-control" id="jmax" name="jmax" placeholder="< 1280"
+                                               value="{{if .serverInterface.Jmax}}{{ .serverInterface.Jmax }}{{end}}">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-3">
+                                        <label for="s1">S1</label>
+                                        <input type="text" class="form-control" id="s1" name="s1" value="{{if .serverInterface.S1}}{{ .serverInterface.S1 }}{{end}}">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label for="s2">S2</label>
+                                        <input type="text" class="form-control" id="s2" name="s2" value="{{if .serverInterface.S2}}{{ .serverInterface.S2 }}{{end}}">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label for="s3">S3</label>
+                                        <input type="text" class="form-control" id="s3" name="s3" value="{{if .serverInterface.S3}}{{ .serverInterface.S3 }}{{end}}">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label for="s4">S4</label>
+                                        <input type="text" class="form-control" id="s4" name="s4" value="{{if .serverInterface.S4}}{{ .serverInterface.S4 }}{{end}}">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-3">
+                                        <label for="h1">H1</label>
+                                        <input type="text" class="form-control" id="h1" name="h1" value="{{ .serverInterface.H1 }}">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label for="h2">H2</label>
+                                        <input type="text" class="form-control" id="h2" name="h2" value="{{ .serverInterface.H2 }}">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label for="h3">H3</label>
+                                        <input type="text" class="form-control" id="h3" name="h3" value="{{ .serverInterface.H3 }}">
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <label for="h4">H4</label>
+                                        <input type="text" class="form-control" id="h4" name="h4" value="{{ .serverInterface.H4 }}">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="i1">I1</label>
+                                        <input type="text" class="form-control" id="i1" name="i1" value="{{ .serverInterface.I1 }}">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="i2">I2</label>
+                                        <input type="text" class="form-control" id="i2" name="i2" value="{{ .serverInterface.I2 }}">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="i3">I3</label>
+                                        <input type="text" class="form-control" id="i3" name="i3" value="{{ .serverInterface.I3 }}">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-6">
+                                        <label for="i4">I4</label>
+                                        <input type="text" class="form-control" id="i4" name="i4" value="{{ .serverInterface.I4 }}">
+                                    </div>
+                                    <div class="form-group col-md-6">
+                                        <label for="i5">I5</label>
+                                        <input type="text" class="form-control" id="i5" name="i5" value="{{ .serverInterface.I5 }}">
+                                    </div>
+                                </div>
+                            </details>
                         </div>
                         <!-- /.card-body -->
 
@@ -138,7 +223,29 @@ Wireguard Server Settings
             const post_up = $("#post_up").val();
             const pre_down = $("#pre_down").val();
             const post_down = $("#post_down").val();
-            const data = {"addresses": addresses, "listen_port": listen_port, "post_up": post_up, "pre_down": pre_down, "post_down": post_down};
+            const data = {
+                "addresses": addresses,
+                "listen_port": listen_port,
+                "post_up": post_up,
+                "pre_down": pre_down,
+                "post_down": post_down,
+                "h1": $("#h1").val(),
+                "h2": $("#h2").val(),
+                "h3": $("#h3").val(),
+                "h4": $("#h4").val(),
+                "i1": $("#i1").val(),
+                "i2": $("#i2").val(),
+                "i3": $("#i3").val(),
+                "i4": $("#i4").val(),
+                "i5": $("#i5").val()
+            };
+
+            ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4"].forEach(function (key) {
+                const value = $("#" + key).val();
+                if (value !== "") {
+                    data[key] = value;
+                }
+            });
 
             $.ajax({
                 cache: false,
@@ -179,6 +286,13 @@ Wireguard Server Settings
 
         // Wireguard Interface Addresses form validation
         $(document).ready(function () {
+            $.validator.addMethod("greaterThan", function(value, element, param) {
+                if (value === "" || $(param).val() === "") {
+                    return true;
+                }
+                return Number(value) > Number($(param).val());
+            }, "Must be greater than Jmin");
+
             $.validator.setDefaults({
                 submitHandler: function () {
                     submitServerInterfaceSetting();
@@ -190,6 +304,30 @@ Wireguard Server Settings
                         required: true,
                         digits: true,
                         range: [1, 65535]
+                    },
+                    jc: {
+                        digits: true,
+                        range: [1, 128]
+                    },
+                    jmin: {
+                        digits: true
+                    },
+                    jmax: {
+                        digits: true,
+                        range: [1, 1279],
+                        greaterThan: "#jmin"
+                    },
+                    s1: {
+                        digits: true
+                    },
+                    s2: {
+                        digits: true
+                    },
+                    s3: {
+                        digits: true
+                    },
+                    s4: {
+                        digits: true
                     }
                 },
                 messages: {
@@ -197,6 +335,30 @@ Wireguard Server Settings
                         required: "Please enter a port",
                         digits: "Port must be an integer",
                         range: "Port must be in range 1..65535"
+                    },
+                    jc: {
+                        digits: "Jc must be an integer",
+                        range: "Jc must be in range 1..128"
+                    },
+                    jmin: {
+                        digits: "Jmin must be an integer"
+                    },
+                    jmax: {
+                        digits: "Jmax must be an integer",
+                        range: "Jmax must be less than 1280",
+                        greaterThan: "Jmax must be greater than Jmin"
+                    },
+                    s1: {
+                        digits: "S1 must be an integer"
+                    },
+                    s2: {
+                        digits: "S2 must be an integer"
+                    },
+                    s3: {
+                        digits: "S3 must be an integer"
+                    },
+                    s4: {
+                        digits: "S4 must be an integer"
                     }
                 },
                 errorElement: 'span',

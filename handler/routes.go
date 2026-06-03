@@ -846,12 +846,20 @@ func WireGuardServer(db store.IStore) echo.HandlerFunc {
 func WireGuardServerInterfaces(db store.IStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var serverInterface model.ServerInterface
-		c.Bind(&serverInterface)
+		if err := c.Bind(&serverInterface); err != nil {
+			log.Warnf("Cannot bind server interface input: %v", err)
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Bad post data"})
+		}
 
 		// validate the input addresses
 		if util.ValidateServerAddresses(serverInterface.Addresses) == false {
 			log.Warnf("Invalid server interface addresses input from user: %v", serverInterface.Addresses)
 			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, "Interface IP address must be in CIDR format"})
+		}
+
+		if err := util.ValidateAmneziaWGProperties(serverInterface.AmneziaWGProperties); err != nil {
+			log.Warnf("Invalid AmneziaWG properties input from user: %v", serverInterface.AmneziaWGProperties)
+			return c.JSON(http.StatusBadRequest, jsonHTTPResponse{false, err.Error()})
 		}
 
 		serverInterface.UpdatedAt = time.Now().UTC()
