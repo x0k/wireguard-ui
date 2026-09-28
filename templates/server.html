@@ -138,10 +138,12 @@ Wireguard Server Settings
                                     </div>
                                 </div>
 
-                                <p class="text-muted mt-4 mb-2">AmneziaWG 3.1, server only</p>
+                                <p class="text-muted mt-4 mb-2">AmneziaWG 3.1, shared</p>
                                 <p class="text-muted mb-3">
-                                    <code>HeaderProtectionKey</code> is a secret and stays on the server: it is never
-                                    written into generated client configs. It requires <code>S1</code> to <code>S4</code>
+                                    <code>HeaderProtectionKey</code> is a shared secret: both ends run the same
+                                    keystream over the start of every packet, so a client without it cannot
+                                    classify incoming packets. It is written into generated client configs, so
+                                    hand it out like a private key. It requires <code>S1</code> to <code>S4</code>
                                     to be at least 12.
                                 </p>
                                 <div class="form-row">
@@ -152,6 +154,12 @@ Wireguard Server Settings
                                                value="{{ .serverInterface.HeaderProtectionKey }}">
                                     </div>
                                 </div>
+
+                                <p class="text-muted mt-4 mb-2">AmneziaWG 3.1, server only</p>
+                                <p class="text-muted mb-3">
+                                    <code>DisableCookies</code> only suppresses sending cookie replies, which is
+                                    something the responder does, so these are not written into client configs.
+                                </p>
                                 <div class="form-row">
                                     <div class="form-group col-md-6">
                                         <div class="custom-control custom-checkbox">

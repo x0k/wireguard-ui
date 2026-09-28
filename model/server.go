@@ -49,11 +49,10 @@ type AmneziaWGProperties struct {
 	I5   string `json:"i5,omitempty"`
 
 	// AmneziaWG 3.1. S1-S4 and H1-H4 are shared with the clients and must
-	// match on both sides, so they stay above. Everything below is either
-	// server-only or client-only and must never leak into the other config.
-	//
-	// Server-only: header protection key. Client configs must not receive it,
-	// the server needs it to decrypt the protected handshake headers.
+	// match on both sides, so they stay above. The header protection key is
+	// shared too: both ends XOR the same ChaCha20 keystream over the start of
+	// every packet, so a client without it cannot tell a handshake from a
+	// transport packet.
 	HeaderProtectionKey string `json:"header_protection_key,omitempty"`
 
 	// Server-only booleans.

@@ -92,22 +92,27 @@ func TestBuildClientConfigIncludesAmneziaWG31ClientProperties(t *testing.T) {
 
 // The header protection key is a server secret. A client that receives it can
 // forge protected handshake headers, so it must never appear in a client config.
-func TestBuildClientConfigNeverLeaksServerOnlyProperties(t *testing.T) {
+// The header protection key is a shared secret, not a server-only one: both
+// ends XOR the same keystream over the start of every packet, so a client
+// without it cannot classify incoming packets. The responder-only booleans must
+// stay out of the client config.
+func TestBuildClientConfigSharesHeaderProtectionKeyButNotServerBooleans(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 	props := model.AmneziaWGProperties{
 		S1: 12, S2: 12, S3: 12, S4: 12,
-		HeaderProtectionKey: base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		HeaderProtectionKey: key,
 		RandomTrailers:      true,
 		DisableCookies:      true,
 	}
 	config := BuildClientConfig(testClient(), testServer(props), testGlobalSetting(""))
 
-	for _, leaked := range []string{"HeaderProtectionKey", "RandomTrailers", "DisableCookies"} {
+	if !strings.Contains(config, "HeaderProtectionKey = "+key) {
+		t.Fatalf("client config must carry the header protection key, got:\n%s", config)
+	}
+	for _, leaked := range []string{"RandomTrailers", "DisableCookies"} {
 		if strings.Contains(config, leaked) {
 			t.Fatalf("expected client config to omit %q, got:\n%s", leaked, config)
 		}
-	}
-	if strings.Contains(config, base64.StdEncoding.EncodeToString(make([]byte, 32))) {
-		t.Fatalf("client config leaked the header protection key:\n%s", config)
 	}
 }
 

@@ -131,6 +131,9 @@ func (w *amneziaWGWriter) String() string {
 // Jc/Jmin/Jmax and I1-I5 are junk packets, they carry no data and are only
 // sent by the initiator, so the server ignores them and they may differ per
 // client. S1-S4 and H1-H4 are part of the wire format and must match exactly.
+// The header protection key is a shared secret: both ends run the same ChaCha20
+// stream over the first bytes of every packet, so a peer that does not have it
+// cannot recover the message type and the handshake fails.
 func writeSharedAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
 	w.int("Jc", props.Jc)
 	w.int("Jmin", props.Jmin)
@@ -151,6 +154,8 @@ func writeSharedAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
 	w.str("I3", props.I3)
 	w.str("I4", props.I4)
 	w.str("I5", props.I5)
+
+	w.str("HeaderProtectionKey", props.HeaderProtectionKey)
 }
 
 // writeClientAmneziaWG writes the client-only AmneziaWG 3.1 properties.
@@ -164,15 +169,15 @@ func writeClientAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
 }
 
 // writeServerAmneziaWG writes the server-only AmneziaWG 3.1 properties.
+// DisableCookies only suppresses sending cookie replies, which is a responder
+// action, so only the server side ever acts on it.
 func writeServerAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
-	w.str("HeaderProtectionKey", props.HeaderProtectionKey)
 	w.bool("RandomTrailers", props.RandomTrailers)
 	w.bool("DisableCookies", props.DisableCookies)
 }
 
 // BuildClientAmneziaWGProperties to create the AmneziaWG properties of a
-// client config. The server-only properties are deliberately omitted: the
-// header protection key is a secret and must never leave the server.
+// client config.
 func BuildClientAmneziaWGProperties(props model.AmneziaWGProperties) string {
 	var w amneziaWGWriter
 	writeSharedAmneziaWG(&w, props)
