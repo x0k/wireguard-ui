@@ -47,4 +47,24 @@ type AmneziaWGProperties struct {
 	I3   string `json:"i3,omitempty"`
 	I4   string `json:"i4,omitempty"`
 	I5   string `json:"i5,omitempty"`
+
+	// AmneziaWG 3.1. S1-S4 and H1-H4 are shared with the clients and must
+	// match on both sides, so they stay above. Everything below is either
+	// server-only or client-only and must never leak into the other config.
+	//
+	// Server-only: header protection key. Client configs must not receive it,
+	// the server needs it to decrypt the protected handshake headers.
+	HeaderProtectionKey string `json:"header_protection_key,omitempty"`
+
+	// Server-only booleans.
+	RandomTrailers bool `json:"random_trailers,omitempty"`
+	DisableCookies bool `json:"disable_cookies,omitempty"`
+
+	// Client-only, either "value" or "lo-hi" range.
+	ContentPaddingAddition string `json:"content_padding_addition,omitempty"`
+	RekeyAfterTime         string `json:"rekey_after_time,omitempty"`
+	RekeyTimeout           string `json:"rekey_timeout,omitempty"`
+	RejectAfterTime        string `json:"reject_after_time,omitempty"`
+	KeepaliveTimeout       string `json:"keepalive_timeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"max_handshake_attempts,omitempty"`
 }

@@ -137,6 +137,83 @@ Wireguard Server Settings
                                         <input type="text" class="form-control" id="i5" name="i5" value="{{ .serverInterface.I5 }}">
                                     </div>
                                 </div>
+
+                                <p class="text-muted mt-4 mb-2">AmneziaWG 3.1, server only</p>
+                                <p class="text-muted mb-3">
+                                    <code>HeaderProtectionKey</code> is a secret and stays on the server: it is never
+                                    written into generated client configs. It requires <code>S1</code> to <code>S4</code>
+                                    to be at least 12.
+                                </p>
+                                <div class="form-row">
+                                    <div class="form-group col-md-12">
+                                        <label for="header_protection_key">HeaderProtectionKey</label>
+                                        <input type="password" class="form-control" id="header_protection_key"
+                                               name="header_protection_key" placeholder="base64, 32 bytes"
+                                               value="{{ .serverInterface.HeaderProtectionKey }}">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-6">
+                                        <div class="custom-control custom-checkbox">
+                                            <input type="checkbox" class="custom-control-input" id="random_trailers"
+                                                   name="random_trailers" {{if .serverInterface.RandomTrailers}}checked{{end}}>
+                                            <label class="custom-control-label" for="random_trailers">RandomTrailers</label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group col-md-6">
+                                        <div class="custom-control custom-checkbox">
+                                            <input type="checkbox" class="custom-control-input" id="disable_cookies"
+                                                   name="disable_cookies" {{if .serverInterface.DisableCookies}}checked{{end}}>
+                                            <label class="custom-control-label" for="disable_cookies">DisableCookies</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <p class="text-muted mt-4 mb-2">AmneziaWG 3.1, client only</p>
+                                <p class="text-muted mb-3">
+                                    Each value is a single number or a <code>lo-hi</code> range in
+                                    <code>0..65535</code>. These are written into generated client configs only.
+                                </p>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="content_padding_addition">ContentPaddingAddition</label>
+                                        <input type="text" class="form-control" id="content_padding_addition"
+                                               name="content_padding_addition" placeholder="value or lo-hi"
+                                               value="{{ .serverInterface.ContentPaddingAddition }}">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="rekey_after_time">RekeyAfterTime</label>
+                                        <input type="text" class="form-control" id="rekey_after_time"
+                                               name="rekey_after_time" placeholder="value or lo-hi"
+                                               value="{{ .serverInterface.RekeyAfterTime }}">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="rekey_timeout">RekeyTimeout</label>
+                                        <input type="text" class="form-control" id="rekey_timeout"
+                                               name="rekey_timeout" placeholder="value or lo-hi"
+                                               value="{{ .serverInterface.RekeyTimeout }}">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="reject_after_time">RejectAfterTime</label>
+                                        <input type="text" class="form-control" id="reject_after_time"
+                                               name="reject_after_time" placeholder="value or lo-hi"
+                                               value="{{ .serverInterface.RejectAfterTime }}">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="keepalive_timeout">KeepaliveTimeout</label>
+                                        <input type="text" class="form-control" id="keepalive_timeout"
+                                               name="keepalive_timeout" placeholder="value or lo-hi"
+                                               value="{{ .serverInterface.KeepaliveTimeout }}">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="max_handshake_attempts">MaxHandshakeAttempts</label>
+                                        <input type="text" class="form-control" id="max_handshake_attempts"
+                                               name="max_handshake_attempts" placeholder="value or lo-hi"
+                                               value="{{ .serverInterface.MaxHandshakeAttempts }}">
+                                    </div>
+                                </div>
                             </details>
                         </div>
                         <!-- /.card-body -->
@@ -237,7 +314,16 @@ Wireguard Server Settings
                 "i2": $("#i2").val(),
                 "i3": $("#i3").val(),
                 "i4": $("#i4").val(),
-                "i5": $("#i5").val()
+                "i5": $("#i5").val(),
+                "header_protection_key": $("#header_protection_key").val(),
+                "random_trailers": $("#random_trailers").is(":checked"),
+                "disable_cookies": $("#disable_cookies").is(":checked"),
+                "content_padding_addition": $("#content_padding_addition").val(),
+                "rekey_after_time": $("#rekey_after_time").val(),
+                "rekey_timeout": $("#rekey_timeout").val(),
+                "reject_after_time": $("#reject_after_time").val(),
+                "keepalive_timeout": $("#keepalive_timeout").val(),
+                "max_handshake_attempts": $("#max_handshake_attempts").val()
             };
 
             ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4"].forEach(function (key) {
@@ -293,6 +379,28 @@ Wireguard Server Settings
                 return Number(value) > Number($(param).val());
             }, "Must be greater than Jmin");
 
+            // AmneziaWG 3.1 range: either a number or lo-hi, both in 0..65535.
+            $.validator.addMethod("u16range", function(value, element) {
+                if (value === "") {
+                    return true;
+                }
+                const parts = value.split("-");
+                if (parts.length > 2) {
+                    return false;
+                }
+                const bounds = parts.map(function (p) { return p.trim(); });
+                if (bounds.some(function (b) { return !/^\d+$/.test(b); })) {
+                    return false;
+                }
+                if (bounds.some(function (b) { return Number(b) > 65535; })) {
+                    return false;
+                }
+                if (bounds.length === 2 && Number(bounds[0]) > Number(bounds[1])) {
+                    return false;
+                }
+                return true;
+            }, "Must be a number or a lo-hi range in 0..65535");
+
             $.validator.setDefaults({
                 submitHandler: function () {
                     submitServerInterfaceSetting();
@@ -328,6 +436,27 @@ Wireguard Server Settings
                     },
                     s4: {
                         digits: true
+                    },
+                    header_protection_key: {
+                        maxlength: 44
+                    },
+                    content_padding_addition: {
+                        u16range: true
+                    },
+                    rekey_after_time: {
+                        u16range: true
+                    },
+                    rekey_timeout: {
+                        u16range: true
+                    },
+                    reject_after_time: {
+                        u16range: true
+                    },
+                    keepalive_timeout: {
+                        u16range: true
+                    },
+                    max_handshake_attempts: {
+                        u16range: true
                     }
                 },
                 messages: {
@@ -359,6 +488,27 @@ Wireguard Server Settings
                     },
                     s4: {
                         digits: "S4 must be an integer"
+                    },
+                    header_protection_key: {
+                        maxlength: "HeaderProtectionKey must be at most 44 characters"
+                    },
+                    content_padding_addition: {
+                        u16range: "ContentPaddingAddition must be a number or a lo-hi range in 0..65535"
+                    },
+                    rekey_after_time: {
+                        u16range: "RekeyAfterTime must be a number or a lo-hi range in 0..65535"
+                    },
+                    rekey_timeout: {
+                        u16range: "RekeyTimeout must be a number or a lo-hi range in 0..65535"
+                    },
+                    reject_after_time: {
+                        u16range: "RejectAfterTime must be a number or a lo-hi range in 0..65535"
+                    },
+                    keepalive_timeout: {
+                        u16range: "KeepaliveTimeout must be a number or a lo-hi range in 0..65535"
+                    },
+                    max_handshake_attempts: {
+                        u16range: "MaxHandshakeAttempts must be a number or a lo-hi range in 0..65535"
                     }
                 },
                 errorElement: 'span',

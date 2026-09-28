@@ -3,6 +3,7 @@ package util
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
@@ -44,7 +45,7 @@ func BuildClientConfig(client model.Client, server model.Server, setting model.G
 	clientPrivateKey := fmt.Sprintf("PrivateKey = %s\n", client.PrivateKey)
 	clientAmneziaWGProperties := ""
 	if server.Interface != nil {
-		clientAmneziaWGProperties = BuildAmneziaWGProperties(server.Interface.AmneziaWGProperties)
+		clientAmneziaWGProperties = BuildClientAmneziaWGProperties(server.Interface.AmneziaWGProperties)
 	}
 	clientDNS := ""
 	if client.UseServerDNS {
@@ -99,38 +100,146 @@ func BuildClientConfig(client model.Client, server model.Server, setting model.G
 	return strConfig
 }
 
+// amneziaWGWriter accumulates config lines for a single [Interface] section.
+type amneziaWGWriter struct {
+	b strings.Builder
+}
+
+func (w *amneziaWGWriter) int(name string, value int) {
+	if value > 0 {
+		fmt.Fprintf(&w.b, "%s = %d\n", name, value)
+	}
+}
+
+func (w *amneziaWGWriter) str(name string, value string) {
+	if value != "" {
+		fmt.Fprintf(&w.b, "%s = %s\n", name, value)
+	}
+}
+
+func (w *amneziaWGWriter) bool(name string, value bool) {
+	if value {
+		fmt.Fprintf(&w.b, "%s = on\n", name)
+	}
+}
+
+func (w *amneziaWGWriter) String() string {
+	return w.b.String()
+}
+
+// writeSharedAmneziaWG writes the properties that both ends must agree on.
+// Jc/Jmin/Jmax and I1-I5 are junk packets, they carry no data and are only
+// sent by the initiator, so the server ignores them and they may differ per
+// client. S1-S4 and H1-H4 are part of the wire format and must match exactly.
+func writeSharedAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
+	w.int("Jc", props.Jc)
+	w.int("Jmin", props.Jmin)
+	w.int("Jmax", props.Jmax)
+
+	w.int("S1", props.S1)
+	w.int("S2", props.S2)
+	w.int("S3", props.S3)
+	w.int("S4", props.S4)
+
+	w.str("H1", props.H1)
+	w.str("H2", props.H2)
+	w.str("H3", props.H3)
+	w.str("H4", props.H4)
+
+	w.str("I1", props.I1)
+	w.str("I2", props.I2)
+	w.str("I3", props.I3)
+	w.str("I4", props.I4)
+	w.str("I5", props.I5)
+}
+
+// writeClientAmneziaWG writes the client-only AmneziaWG 3.1 properties.
+func writeClientAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
+	w.str("ContentPaddingAddition", props.ContentPaddingAddition)
+	w.str("RekeyAfterTime", props.RekeyAfterTime)
+	w.str("RekeyTimeout", props.RekeyTimeout)
+	w.str("RejectAfterTime", props.RejectAfterTime)
+	w.str("KeepaliveTimeout", props.KeepaliveTimeout)
+	w.str("MaxHandshakeAttempts", props.MaxHandshakeAttempts)
+}
+
+// writeServerAmneziaWG writes the server-only AmneziaWG 3.1 properties.
+func writeServerAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
+	w.str("HeaderProtectionKey", props.HeaderProtectionKey)
+	w.bool("RandomTrailers", props.RandomTrailers)
+	w.bool("DisableCookies", props.DisableCookies)
+}
+
+// BuildClientAmneziaWGProperties to create the AmneziaWG properties of a
+// client config. The server-only properties are deliberately omitted: the
+// header protection key is a secret and must never leave the server.
+func BuildClientAmneziaWGProperties(props model.AmneziaWGProperties) string {
+	var w amneziaWGWriter
+	writeSharedAmneziaWG(&w, props)
+	writeClientAmneziaWG(&w, props)
+
+	return w.String()
+}
+
+// BuildServerAmneziaWGProperties to create the AmneziaWG properties of the
+// server config. The client-only timing knobs are not written, the server has
+// its own defaults for them.
+func BuildServerAmneziaWGProperties(props model.AmneziaWGProperties) string {
+	var w amneziaWGWriter
+	writeSharedAmneziaWG(&w, props)
+	writeServerAmneziaWG(&w, props)
+
+	return w.String()
+}
+
+// BuildAmneziaWGProperties emits every AmneziaWG property, exactly as it did
+// before AmneziaWG 3.1 was supported. Custom wg.conf templates call this
+// function, so the output must stay a superset of what older versions produced:
+// dropping a property here would silently strip it from a working config.
+// Prefer BuildServerAmneziaWGProperties or BuildClientAmneziaWGProperties in
+// new templates, which emit only the properties their side actually applies.
 func BuildAmneziaWGProperties(props model.AmneziaWGProperties) string {
-	var b strings.Builder
+	var w amneziaWGWriter
+	writeSharedAmneziaWG(&w, props)
+	writeClientAmneziaWG(&w, props)
+	writeServerAmneziaWG(&w, props)
 
-	writeInt := func(name string, value int) {
-		if value > 0 {
-			fmt.Fprintf(&b, "%s = %d\n", name, value)
+	return w.String()
+}
+
+// maxAwgU16Range mirrors the tools' u16_range_from_string, which stores both
+// bounds in a uint16 each. Values above 65535 are accepted by the parser and
+// silently truncated, so they are rejected here instead.
+const maxAwgU16Range = 65535
+
+// validateAwgU16Range checks an AmneziaWG 3.1 "value" or "lo-hi" range.
+func validateAwgU16Range(name string, value string) error {
+	if value == "" {
+		return nil
+	}
+
+	lo, hi, found := strings.Cut(value, "-")
+	if !found {
+		hi = lo
+	}
+
+	for _, bound := range []string{lo, hi} {
+		n, err := strconv.Atoi(strings.TrimSpace(bound))
+		if err != nil {
+			return fmt.Errorf("%s must be a number or a lo-hi range, got %q", name, value)
+		}
+		if n < 0 || n > maxAwgU16Range {
+			return fmt.Errorf("%s must be in range 0..%d, got %d", name, maxAwgU16Range, n)
 		}
 	}
-	writeString := func(name string, value string) {
-		if value != "" {
-			fmt.Fprintf(&b, "%s = %s\n", name, value)
-		}
+
+	loN, _ := strconv.Atoi(strings.TrimSpace(lo))
+	hiN, _ := strconv.Atoi(strings.TrimSpace(hi))
+	if loN > hiN {
+		return fmt.Errorf("%s lower bound must not exceed upper bound, got %q", name, value)
 	}
 
-	writeInt("Jc", props.Jc)
-	writeInt("Jmin", props.Jmin)
-	writeInt("Jmax", props.Jmax)
-	writeInt("S1", props.S1)
-	writeInt("S2", props.S2)
-	writeInt("S3", props.S3)
-	writeInt("S4", props.S4)
-	writeString("H1", props.H1)
-	writeString("H2", props.H2)
-	writeString("H3", props.H3)
-	writeString("H4", props.H4)
-	writeString("I1", props.I1)
-	writeString("I2", props.I2)
-	writeString("I3", props.I3)
-	writeString("I4", props.I4)
-	writeString("I5", props.I5)
-
-	return b.String()
+	return nil
 }
 
 func ValidateAmneziaWGProperties(props model.AmneziaWGProperties) error {
@@ -146,6 +255,34 @@ func ValidateAmneziaWGProperties(props model.AmneziaWGProperties) error {
 		}
 		if props.Jmax >= 1280 {
 			return errors.New("Jmax must be less than 1280")
+		}
+	}
+
+	if props.HeaderProtectionKey != "" {
+		key, err := base64.StdEncoding.DecodeString(props.HeaderProtectionKey)
+		if err != nil || len(key) != 32 {
+			return errors.New("HeaderProtectionKey must be a base64 encoded 32 byte key")
+		}
+		// The kernel requires the S paddings to be large enough to carry the
+		// protected header, see the header protection note in the AmneziaWG docs.
+		if props.S1 < 12 || props.S2 < 12 || props.S3 < 12 || props.S4 < 12 {
+			return errors.New("HeaderProtectionKey requires S1, S2, S3 and S4 to be at least 12")
+		}
+	}
+
+	for _, r := range []struct {
+		name  string
+		value string
+	}{
+		{"ContentPaddingAddition", props.ContentPaddingAddition},
+		{"RekeyAfterTime", props.RekeyAfterTime},
+		{"RekeyTimeout", props.RekeyTimeout},
+		{"RejectAfterTime", props.RejectAfterTime},
+		{"KeepaliveTimeout", props.KeepaliveTimeout},
+		{"MaxHandshakeAttempts", props.MaxHandshakeAttempts},
+	} {
+		if err := validateAwgU16Range(r.name, r.value); err != nil {
+			return err
 		}
 	}
 
@@ -629,7 +766,8 @@ func WriteWireGuardServerConfig(tmplDir fs.FS, serverConfig model.Server, client
 
 	// parse the template
 	t, err := template.New("wg_config").Funcs(template.FuncMap{
-		"BuildAmneziaWGProperties": BuildAmneziaWGProperties,
+		"BuildAmneziaWGProperties":       BuildAmneziaWGProperties,
+		"BuildServerAmneziaWGProperties": BuildServerAmneziaWGProperties,
 	}).Parse(tmplWireguardConf)
 	if err != nil {
 		return err

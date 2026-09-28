@@ -60,7 +60,7 @@ docker-compose up
 | `WGUI_LOG_LEVEL`              | The default log level. Possible values: `DEBUG`, `INFO`, `WARN`, `ERROR`, `OFF`                                                                                                                                                                                                     | `INFO`                             |
 | `WG_CONF_TEMPLATE`            | The custom `wg.conf` config file template. Please refer to our [default template](https://github.com/ngoduykhanh/wireguard-ui/blob/master/templates/wg.conf)                                                                                                                        | N/A                                |
 | `WG_FORCE_CONF` | Forcing the wireguard configuration to be written at application startup. | false |
-| `WG_QUICK` | set up a WireGuard interface simply tool | `wg-quick` |
+| `WG_QUICK` | set up a WireGuard interface simply tool. Set it to `awg-quick` to use the bundled AmneziaWG tools | `wg-quick` |
 | `EMAIL_FROM_ADDRESS`          | The sender email address                                                                                                                                                                                                                                                            | N/A                                |
 | `EMAIL_FROM_NAME`             | The sender name                                                                                                                                                                                                                                                                     | `WireGuard UI`                     |
 | `SENDGRID_API_KEY`            | The SendGrid api key                                                                                                                                                                                                                                                                | N/A                                |
@@ -87,6 +87,29 @@ These environment variables are used to control the default server settings used
 | `WGUI_SERVER_LISTEN_PORT`         | The default server listen port                                                                | `51820`         |
 | `WGUI_SERVER_POST_UP_SCRIPT`      | The default server post-up script                                                             | N/A             |
 | `WGUI_SERVER_POST_DOWN_SCRIPT`    | The default server post-down script                                                           | N/A             |
+
+### AmneziaWG properties
+
+The AmneziaWG properties are not set from the environment. They are stored in
+`db/server/interfaces.json` and edited on the *Server Configuration* page.
+
+Properties are split by which side of the tunnel needs them:
+
+| Property | Applies to | Notes |
+|---|---|---|
+| `S1`–`S4`, `H1`–`H4` | both | Part of the wire format, must match on both sides |
+| `Jc`, `Jmin`, `Jmax`, `I1`–`I5` | either | Junk packets, never seen by the peer, safe to differ |
+| `HeaderProtectionKey`, `RandomTrailers`, `DisableCookies` | server only | `HeaderProtectionKey` is a secret and is never written into client configs. It requires `S1`–`S4` to be at least 12 |
+| `ContentPaddingAddition`, `RekeyAfterTime`, `RekeyTimeout`, `RejectAfterTime`, `KeepaliveTimeout`, `MaxHandshakeAttempts` | client only | Each accepts a single number or a `lo-hi` range in `0..65535` |
+
+Generating a header protection key: `awg genkey`. The server needs it, clients do not.
+
+To use these properties the container must run the AmneziaWG tools, so set
+`WG_QUICK=awg-quick` and `WGUI_MANAGE_START=true`.
+
+The bundled tools live in the `amneziawg-tools` submodule. A generated config
+is rejected by `awg-quick` if it contains an option the pinned parser does not
+know, so keep the submodule and the UI in sync.
 
 ### Defaults for new clients
 

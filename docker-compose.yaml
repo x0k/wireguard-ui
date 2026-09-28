@@ -16,6 +16,9 @@ services:
       - WGUI_USERNAME=alpha
       - WGUI_PASSWORD=this-unusual-password
       - WG_CONF_TEMPLATE
+      # AmneziaWG: the bundled awg-quick understands the AmneziaWG options,
+      # the distribution wg-quick rejects them as unknown.
+      - WG_QUICK=awg-quick
       - WGUI_MANAGE_START=false
       - WGUI_MANAGE_RESTART=false
     logging:
