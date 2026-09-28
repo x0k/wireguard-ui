@@ -133,7 +133,10 @@ func (w *amneziaWGWriter) String() string {
 // client. S1-S4 and H1-H4 are part of the wire format and must match exactly.
 // The header protection key is a shared secret: both ends run the same ChaCha20
 // stream over the first bytes of every packet, so a peer that does not have it
-// cannot recover the message type and the handshake fails.
+// cannot recover the message type and the handshake fails. RandomTrailers is
+// shared for a similar reason: the receiver only tolerates a packet larger than
+// the size it expects when it has the flag set itself, so a peer without it
+// drops the trailer.
 func writeSharedAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
 	w.int("Jc", props.Jc)
 	w.int("Jmin", props.Jmin)
@@ -156,6 +159,7 @@ func writeSharedAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
 	w.str("I5", props.I5)
 
 	w.str("HeaderProtectionKey", props.HeaderProtectionKey)
+	w.bool("RandomTrailers", props.RandomTrailers)
 }
 
 // writeClientAmneziaWG writes the client-only AmneziaWG 3.1 properties.
@@ -170,9 +174,8 @@ func writeClientAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
 
 // writeServerAmneziaWG writes the server-only AmneziaWG 3.1 properties.
 // DisableCookies only suppresses sending cookie replies, which is a responder
-// action, so only the server side ever acts on it.
+// action, so a client that sets it would change nothing.
 func writeServerAmneziaWG(w *amneziaWGWriter, props model.AmneziaWGProperties) {
-	w.bool("RandomTrailers", props.RandomTrailers)
 	w.bool("DisableCookies", props.DisableCookies)
 }
 

@@ -92,11 +92,13 @@ func TestBuildClientConfigIncludesAmneziaWG31ClientProperties(t *testing.T) {
 
 // The header protection key is a server secret. A client that receives it can
 // forge protected handshake headers, so it must never appear in a client config.
-// The header protection key is a shared secret, not a server-only one: both
-// ends XOR the same keystream over the start of every packet, so a client
-// without it cannot classify incoming packets. The responder-only booleans must
-// stay out of the client config.
-func TestBuildClientConfigSharesHeaderProtectionKeyButNotServerBooleans(t *testing.T) {
+// The header protection key and RandomTrailers are shared, not server-only.
+// The key is a symmetric keystream over the packet head, and the receiver only
+// tolerates a packet bigger than it expects when RandomTrailers is set locally,
+// so a client without either drops valid traffic. DisableCookies suppresses
+// sending cookie replies, which only the responder does, so that one is server
+// only.
+func TestBuildClientConfigSharesKeyAndTrailersButNotDisableCookies(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 	props := model.AmneziaWGProperties{
 		S1: 12, S2: 12, S3: 12, S4: 12,
@@ -109,10 +111,11 @@ func TestBuildClientConfigSharesHeaderProtectionKeyButNotServerBooleans(t *testi
 	if !strings.Contains(config, "HeaderProtectionKey = "+key) {
 		t.Fatalf("client config must carry the header protection key, got:\n%s", config)
 	}
-	for _, leaked := range []string{"RandomTrailers", "DisableCookies"} {
-		if strings.Contains(config, leaked) {
-			t.Fatalf("expected client config to omit %q, got:\n%s", leaked, config)
-		}
+	if !strings.Contains(config, "RandomTrailers = on") {
+		t.Fatalf("client config must carry RandomTrailers, got:\n%s", config)
+	}
+	if strings.Contains(config, "DisableCookies") {
+		t.Fatalf("expected client config to omit DisableCookies, got:\n%s", config)
 	}
 }
 

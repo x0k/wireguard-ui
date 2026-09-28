@@ -52,11 +52,13 @@ type AmneziaWGProperties struct {
 	// match on both sides, so they stay above. The header protection key is
 	// shared too: both ends XOR the same ChaCha20 keystream over the start of
 	// every packet, so a client without it cannot tell a handshake from a
-	// transport packet.
+	// transport packet. RandomTrailers is shared for the same reason: the
+	// receiver only accepts an oversized packet if it expects trailers itself.
 	HeaderProtectionKey string `json:"header_protection_key,omitempty"`
+	RandomTrailers      bool   `json:"random_trailers,omitempty"`
 
-	// Server-only booleans.
-	RandomTrailers bool `json:"random_trailers,omitempty"`
+	// Server-only, DisableCookies suppresses sending cookie replies, which only
+	// the responder ever does.
 	DisableCookies bool `json:"disable_cookies,omitempty"`
 
 	// Client-only, either "value" or "lo-hi" range.

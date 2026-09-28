@@ -155,20 +155,27 @@ Wireguard Server Settings
                                     </div>
                                 </div>
 
-                                <p class="text-muted mt-4 mb-2">AmneziaWG 3.1, server only</p>
-                                <p class="text-muted mb-3">
-                                    <code>DisableCookies</code> only suppresses sending cookie replies, which is
-                                    something the responder does, so these are not written into client configs.
-                                </p>
                                 <div class="form-row">
-                                    <div class="form-group col-md-6">
+                                    <div class="form-group col-md-12">
                                         <div class="custom-control custom-checkbox">
                                             <input type="checkbox" class="custom-control-input" id="random_trailers"
                                                    name="random_trailers" {{if .serverInterface.RandomTrailers}}checked{{end}}>
                                             <label class="custom-control-label" for="random_trailers">RandomTrailers</label>
+                                            <small class="form-text text-muted">
+                                                Written into client configs too: a receiver only accepts a packet
+                                                bigger than it expects when it expects trailers itself.
+                                            </small>
                                         </div>
                                     </div>
-                                    <div class="form-group col-md-6">
+                                </div>
+
+                                <p class="text-muted mt-4 mb-2">AmneziaWG 3.1, server only</p>
+                                <p class="text-muted mb-3">
+                                    <code>DisableCookies</code> only suppresses sending cookie replies, which is
+                                    something the responder does, so it is not written into client configs.
+                                </p>
+                                <div class="form-row">
+                                    <div class="form-group col-md-12">
                                         <div class="custom-control custom-checkbox">
                                             <input type="checkbox" class="custom-control-input" id="disable_cookies"
                                                    name="disable_cookies" {{if .serverInterface.DisableCookies}}checked{{end}}>

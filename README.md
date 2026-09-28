@@ -100,7 +100,8 @@ Properties are split by which side of the tunnel needs them:
 | `S1`–`S4`, `H1`–`H4` | both | Part of the wire format, must match on both sides |
 | `Jc`, `Jmin`, `Jmax`, `I1`–`I5` | either | Junk packets, never seen by the peer, safe to differ |
 | `HeaderProtectionKey` | both | Shared secret: both ends XOR the same keystream over the start of every packet. It requires `S1`–`S4` to be at least 12 |
-| `RandomTrailers`, `DisableCookies` | server only | Responder-side options; `DisableCookies` only suppresses sending cookie replies |
+| `RandomTrailers` | both | The receiver only accepts a packet larger than it expects when it expects trailers itself, so a peer without this drops the traffic. Best with equal `S1`–`S4` |
+| `DisableCookies` | server only | Suppresses sending cookie replies, which only the responder does |
 | `ContentPaddingAddition`, `RekeyAfterTime`, `RekeyTimeout`, `RejectAfterTime`, `KeepaliveTimeout`, `MaxHandshakeAttempts` | client only | Each accepts a single number or a `lo-hi` range in `0..65535` |
 
 Generating a header protection key: `awg genkey`. The server needs it, clients do not.
