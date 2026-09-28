@@ -26,5 +26,12 @@ db
 assets
 wireguard-ui
 
+# AWG tools build output. A locally built src/wg is linked against whatever
+# toolchain built it, which may not match this image, and `make install` would
+# happily ship it instead of recompiling.
+amneziawg-tools/src/wg
+amneziawg-tools/src/*.o
+amneziawg-tools/src/*.d
+
 # Examples
 examples

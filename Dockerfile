@@ -67,7 +67,8 @@ COPY amneziawg-tools/ /amnezia
 
 WORKDIR /amnezia/src
 
-RUN WITH_WGQUICK=yes WITH_SYSTEMDUNITS=no WITH_BASHCOMPLETION=no make install
+RUN WITH_WGQUICK=yes WITH_SYSTEMDUNITS=no WITH_BASHCOMPLETION=no make clean && \
+    WITH_WGQUICK=yes WITH_SYSTEMDUNITS=no WITH_BASHCOMPLETION=no make install
 
 WORKDIR /app
 
